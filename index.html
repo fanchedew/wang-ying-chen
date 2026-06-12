@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safety-Critical Scenario Generation & Weather Simulation</title>
+    <style>
+        /* ========== CSS Reset & Base ========== */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2236;
+            --bg-card-hover: #1f2b42;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.3);
+            --accent-secondary: #8b5cf6;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(255,255,255,0.08);
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --radius: 12px;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ========== Animated Background ========== */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .bg-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.15;
+            z-index: 0;
+            pointer-events: none;
+            animation: orbFloat 20s ease-in-out infinite;
+        }
+        .bg-orb--1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; }
+        .bg-orb--2 { width: 500px; height: 500px; background: var(--accent-secondary); bottom: -150px; right: -100px; animation-delay: -10s; }
+        .bg-orb--3 { width: 400px; height: 400px; background: #06b6d4; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: -5s; }
+
+        @keyframes orbFloat {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 30px) scale(0.95); }
+        }
+
+        /* ========== Layout ========== */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ========== Header / Navigation ========== */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            background: rgba(10, 14, 26, 0.8);
+            border-bottom: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+
+        header .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: -0.02em;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        nav {
+            display: flex;
+            gap: 32px;
+        }
+
+        nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+            position: relative;
+        }
+
+        nav a:hover { color: var(--text-primary); }
+
+        nav a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent);
+            transition: width 0.3s;
+            border-radius: 1px;
+        }
+
+        nav a:hover::after { width: 100%; }
+
+        /* ========== Hero Section ========== */
+        .hero {
+            padding: 140px 0 80px;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 100px;
+            font-size: 13px;
+            color: var(--accent);
+            font-weight: 500;
+            margin-bottom: 24px;
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        .hero-badge .pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.5); }
+        }
+
+        .hero h1 {
+            font-size: clamp(36px, 5vw, 56px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 20px;
+            animation: fadeInUp 0.6s ease-out 0.1s both;
+        }
+
+        .hero h1 .gradient {
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary), #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin: 0 auto 40px;
+            animation: fadeInUp 0.6s ease-out 0.2s both;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ========== Stats Bar ========== */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            margin-bottom: 80px;
+            animation: fadeInUp 0.6s ease-out 0.3s both;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(59, 130, 246, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        /* ========== Section Title ========== */
+        .section-title {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .section-title h2 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+        }
+
+        .section-title p {
+            color: var(--text-secondary);
+            font-size: 16px;
+            max-width: 560px;
+            margin: 0 auto;
+        }
+
+        /* ========== Video Showcase ========== */
+        .video-showcase {
+            margin-bottom: 100px;
+        }
+
+        .video-tabs {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 32px;
+        }
+
+        .video-tab {
+            padding: 10px 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .video-tab:hover {
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+
+        .video-tab.active {
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            border-color: transparent;
+            color: white;
+        }
+
+        .video-tab .tab-icon {
+            font-size: 16px;
+        }
+
+        .video-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .video-wrapper {
+            position: relative;
+            padding-top: 37.33%; /* 448/1200 aspect ratio */
+            background: #000;
+        }
+
+        .video-wrapper video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px 24px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .video-info h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .video-info span {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .video-tags {
+            display: flex;
+            gap: 8px;
+        }
+
+        .video-tag {
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .tag-danger { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .tag-warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+        .tag-info { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+
+        .video-panel { display: none; }
+        .video-panel.active { display: block; }
+
+        /* ========== Video Controls ========== */
+        .video-controls {
+            padding: 16px 24px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .play-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .play-btn:hover {
+            background: #2563eb;
+            transform: scale(1.05);
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .time-display {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+            min-width: 80px;
+            text-align: right;
+        }
+
+        /* ========== Pipeline Section ========== */
+        .pipeline {
+            margin-bottom: 100px;
+        }
+
+        .pipeline-steps {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0;
+            position: relative;
+        }
+
+        .pipeline-steps::before {
+            content: '';
+            position: absolute;
+            top: 40px;
+            left: 12.5%;
+            right: 12.5%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-secondary), #06b6d4, var(--success));
+            z-index: 0;
+        }
+
+        .pipeline-step {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 32px;
+            transition: all 0.3s ease;
+        }
+
+        .pipeline-step:hover .step-icon {
+            border-color: var(--accent);
+            background: var(--bg-card-hover);
+            transform: scale(1.1);
+            box-shadow: 0 0 30px var(--accent-glow);
+        }
+
+        .step-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .step-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            max-width: 160px;
+            margin: 0 auto;
+        }
+
+        /* ========== Features Grid ========== */
+        .features {
+            margin-bottom: 100px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-secondary));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(59,130,246,0.2);
+            transform: translateY(-4px);
+        }
+
+        .feature-card:hover::before { opacity: 1; }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: rgba(59, 130, 246, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* ========== Scenario Detail Cards ========== */
+        .scenario-cards {
+            margin-bottom: 100px;
+        }
+
+        .scenario-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .scenario-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .scenario-card:hover {
+            border-color: rgba(59,130,246,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+        }
+
+        .scenario-header {
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .scenario-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .scenario-meta h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .scenario-meta span {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .scenario-body {
+            padding: 20px 24px;
+        }
+
+        .scenario-body ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .scenario-body li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .scenario-body li .li-icon {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            margin-top: 2px;
+        }
+
+        .li-icon.warn { background: rgba(245,158,11,0.15); color: var(--warning); }
+        .li-icon.danger { background: rgba(239,68,68,0.15); color: var(--danger); }
+        .li-icon.info { background: rgba(59,130,246,0.15); color: var(--accent); }
+
+        .scenario-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .risk-tag {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .risk-tag.high { background: rgba(239,68,68,0.15); color: var(--danger); }
+        .risk-tag.medium { background: rgba(245,158,11,0.15); color: var(--warning); }
+        .risk-tag.low { background: rgba(34,197,94,0.15); color: var(--success); }
+
+        /* ========== Timeline / Annotation ========== */
+        .timeline-section {
+            margin-bottom: 100px;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--accent), var(--accent-secondary), transparent);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 32px;
+            animation: fadeInUp 0.5s ease-out both;
+        }
+
+        .timeline-item:nth-child(1) { animation-delay: 0.1s; }
+        .timeline-item:nth-child(2) { animation-delay: 0.2s; }
+        .timeline-item:nth-child(3) { animation-delay: 0.3s; }
+        .timeline-item:nth-child(4) { animation-delay: 0.4s; }
+
+        .timeline-dot {
+            position: absolute;
+            left: -33px;
+            top: 4px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: 3px solid var(--bg-primary);
+            box-shadow: 0 0 0 2px var(--accent);
+        }
+
+        .timeline-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+
+        .timeline-content h4 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .timeline-content p {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .timeline-time {
+            display: inline-block;
+            font-size: 12px;
+            color: var(--accent);
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ========== Footer ========== */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 40px 0;
+            text-align: center;
+        }
+
+        footer p {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        /* ========== Responsive ========== */
+        @media (max-width: 900px) {
+            .stats { grid-template-columns: repeat(2, 1fr); }
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
+            .pipeline-steps { grid-template-columns: repeat(2, 1fr); gap: 32px; }
+            .pipeline-steps::before { display: none; }
+            .scenario-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 600px) {
+            .stats { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .pipeline-steps { grid-template-columns: 1fr; }
+            nav { display: none; }
+            .hero h1 { font-size: 32px; }
+            .video-tags { display: none; }
+        }
+
+        /* ========== Scroll Animation ========== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Animated Background -->
+    <div class="bg-grid"></div>
+    <div class="bg-orb bg-orb--1"></div>
+    <div class="bg-orb bg-orb--2"></div>
+    <div class="bg-orb bg-orb--3"></div>
+
+    <!-- Header -->
+    <header>
+        <div class="container">
+            <div class="logo">
+                <div class="logo-icon">🛡️</div>
+                <span>SafetyGen</span>
+            </div>
+            <nav>
+                <a href="#scenarios">场景展示</a>
+                <a href="#weather">天气仿真</a>
+                <a href="#pipeline">生成流程</a>
+                <a href="#features">技术特性</a>
+                <a href="#analysis">场景分析</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-badge">
+                <span class="pulse"></span>
+                Safety-Critical Scenario Generation
+            </div>
+            <h1>
+                安全关键场景<br>
+                <span class="gradient">智能生成与验证</span>
+            </h1>
+            <p>
+                基于真实交通数据的安全关键场景生成框架，覆盖施工区域、行人穿越、天气变化等高风险驾驶场景，结合仿真天气编辑技术，为自动驾驶系统提供全面的测试验证
+            </p>
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="container">
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value">130</div>
+                <div class="stat-label">每场景帧数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">6</div>
+                <div class="stat-label">多视角摄像头</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">12</div>
+                <div class="stat-label">FPS 采样率</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">3</div>
+                <div class="stat-label">关键场景类型</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Video Showcase -->
+    <section id="scenarios" class="video-showcase">
+        <div class="container">
+            <div class="section-title reveal">
+                <h2>🎬 场景视频展示</h2>
+                <p>代表性安全关键场景与天气仿真的视频记录，涵盖不同的风险类型和环境条件</p>
+            </div>
+
+            <div class="video-tabs reveal">
+                <button class="video-tab active" onclick="switchVideo(0)">
+                    <span class="tab-icon">🚧</span>
+                    施工区域交通场景
+                </button>
+                <button class="video-tab" onclick="switchVideo(1)">
+                    <span class="tab-icon">🚶</span>
+                    行人与城市路口场景
+                </button>
+                <button class="video-tab" onclick="switchVideo(2)">
+                    <span class="tab-icon">🌦️</span>
+                    仿真天气变化
+                </button>
+            </div>
+
+            <!-- Video 1 -->
+            <div class="video-panel active" id="videoPanel0">
+                <div class="video-container">
+                    <div class="video-wrapper">
+                        <video id="video0" preload="metadata" loop>
+                            <source src="sample_0000_448x1200_f129_fps12.mp4" type="video/mp4">
+                        </video>
+                        <div class="video-overlay">
+                            <div class="video-info">
+                                <h3>施工区域交通场景</h3>
+                                <span>6 视角环绕 · 1200×448 · 10.8s · 12FPS</span>
+                            </div>
+                            <div class="video-tags">
+                                <span class="video-tag tag-danger">高风险</span>
+                                <span class="video-tag tag-warning">施工区域</span>
+                                <span class="video-tag tag-info">多车交互</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="video-controls">
+                        <button class="play-btn" onclick="togglePlay(0)" id="playBtn0">▶</button>
+                        <div class="progress-bar" id="progressBar0" onclick="seekVideo(event, 0)">
+                            <div class="progress-fill" id="progressFill0"></div>
+                        </div>
+                        <div class="time-display" id="timeDisplay0">0:00 / 0:10</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video 2 -->
+            <div class="video-panel" id="videoPanel1">
+                <div class="video-container">
+                    <div class="video-wrapper">
+                        <video id="video1" preload="metadata" loop>
+                            <source src="sample_0000_448x1200_f129_fps12_2.mp4" type="video/mp4">
+                        </video>
+                        <div class="video-overlay">
+                            <div class="video-info">
+                                <h3>行人与城市路口场景</h3>
+                                <span>6 视角环绕 · 1200×448 · 10.8s · 12FPS</span>
+                            </div>
+                            <div class="video-tags">
+                                <span class="video-tag tag-danger">高风险</span>
+                                <span class="video-tag tag-warning">行人穿越</span>
+                                <span class="video-tag tag-info">交叉路口</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="video-controls">
+                        <button class="play-btn" onclick="togglePlay(1)" id="playBtn1">▶</button>
+                        <div class="progress-bar" id="progressBar1" onclick="seekVideo(event, 1)">
+                            <div class="progress-fill" id="progressFill1"></div>
+                        </div>
+                        <div class="time-display" id="timeDisplay1">0:00 / 0:10</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video 3: Weather Simulation -->
+            <div class="video-panel" id="videoPanel2">
+                <div class="video-container">
+                    <div class="video-wrapper" style="padding-top:53.83%">
+                        <video id="video2" preload="metadata" loop>
+                            <source src="weather_sim.mp4" type="video/mp4">
+                        </video>
+                        <div class="video-overlay">
+                            <div class="video-info">
+                                <h3>仿真天气变化</h3>
+                                <span>仿真场景 · 1200×646 · 38.0s · 24FPS</span>
+                            </div>
+                            <div class="video-tags">
+                                <span class="video-tag tag-info">天气仿真</span>
+                                <span class="video-tag tag-warning">环境编辑</span>
+                                <span class="video-tag tag-danger">安全测试</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="video-controls">
+                        <button class="play-btn" onclick="togglePlay(2)" id="playBtn2">▶</button>
+                        <div class="progress-bar" id="progressBar2" onclick="seekVideo(event, 2)">
+                            <div class="progress-fill" id="progressFill2"></div>
+                        </div>
+                        <div class="time-display" id="timeDisplay2">0:00 / 0:38</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <section id="pipeline" class="pipeline">
+        <div class="container">
+            <div class="section-title reveal">
+                <h2>⚙️ 场景生成流程</h2>
+                <p>从数据采集到场景验证的完整技术链路</p>
+            </div>
+
+            <div class="pipeline-steps reveal">
+                <div class="pipeline-step">
+                    <div class="step-icon">📹</div>
+                    <div class="step-title">数据采集</div>
+                    <div class="step-desc">多视角摄像头同步采集真实交通场景数据</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-icon">🔍</div>
+                    <div class="step-title">风险识别</div>
+                    <div class="step-desc">自动检测施工区域、行人穿越等安全关键要素</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-icon">🧩</div>
+                    <div class="step-title">场景生成</div>
+                    <div class="step-desc">基于扩散模型生成多样化的安全关键测试场景</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-icon">✅</div>
+                    <div class="step-title">验证评估</div>
+                    <div class="step-desc">对生成场景进行真实性、多样性和风险等级评估</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Weather Simulation Section -->
+    <section id="weather" class="timeline-section" style="margin-bottom:100px">
+        <div class="container">
+            <div class="section-title reveal">
+                <h2>🌦️ 仿真天气编辑</h2>
+                <p>基于仿真的天气条件可控编辑技术，覆盖多种气象条件的场景生成与安全测试</p>
+            </div>
+
+            <div class="features-grid reveal">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:rgba(6,182,212,0.1)">🌤️</div>
+                    <h3>多天气类型支持</h3>
+                    <p>支持晴天、多云、雨天、雪天、雾天等多种天气类型的生成与平滑过渡</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:rgba(168,85,247,0.1)">🎛️</div>
+                    <h3>可控天气编辑</h3>
+                    <p>精确控制天气参数（降雨量、能见度、光照强度等），定向生成目标条件场景</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:rgba(239,68,68,0.1)">🧪</div>
+                    <h3>极端条件测试</h3>
+                    <p>生成罕见但高影响的极端天气场景，验证自动驾驶系统在恶劣条件下的安全边界</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-title reveal">
+                <h2>🚀 技术特性</h2>
+                <p>覆盖安全关键场景生成的核心技术能力</p>
+            </div>
+
+            <div class="features-grid reveal">
+                <div class="feature-card">
+                    <div class="feature-icon">🎥</div>
+                    <h3>多视角同步采集</h3>
+                    <p>6个摄像头视角同步覆盖前方、侧方和后方视野，确保场景感知的完整性与时空一致性</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🧠</div>
+                    <h3>扩散模型生成</h3>
+                    <p>基于条件扩散模型，从真实数据中学习场景分布，生成高质量且多样化的安全关键场景</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚠️</div>
+                    <h3>风险等级标注</h3>
+                    <p>自动识别并标注场景中的风险等级，覆盖施工区域、行人穿越、交叉冲突等典型安全关键要素</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🚗</div>
+                    <h3>多车交互建模</h3>
+                    <p>精确建模车辆间的交互行为，包括跟车、变道、让行等复杂交通行为模式</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🚶</div>
+                    <h3>行人行为感知</h3>
+                    <p>捕捉行人穿越、滞留路口等典型行人风险行为，测试系统的行人保护能力</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>场景多样性保障</h3>
+                    <p>确保生成场景在天气、光照、交通密度、道路拓扑等维度上的多样性覆盖</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Scenario Analysis -->
+    <section id="analysis" class="scenario-cards">
+        <div class="container">
+            <div class="section-title reveal">
+                <h2>📋 场景深度分析</h2>
+                <p>对三个代表性场景的风险要素与关键事件的详细解析</p>
+            </div>
+
+            <div class="scenario-grid reveal">
+                <!-- Scenario 1 -->
+                <div class="scenario-card">
+                    <div class="scenario-header">
+                        <div class="scenario-number">01</div>
+                        <div class="scenario-meta">
+                            <h3>施工区域交通场景</h3>
+                            <span>sample_0000_448x1200_f129_fps12.mp4</span>
+                        </div>
+                    </div>
+                    <div class="scenario-body">
+                        <ul>
+                            <li>
+                                <span class="li-icon warn">⚡</span>
+                                施工区域锥桶与路障密集分布，车道线模糊，需要精确的车道保持能力
+                            </li>
+                            <li>
+                                <span class="li-icon danger">🔥</span>
+                                大型工程车辆（卡车、货车）近距离行驶，存在视野遮挡和盲区风险
+                            </li>
+                            <li>
+                                <span class="li-icon info">📌</span>
+                                多种车型混行（轿车、卡车、巴士），交通流复杂多变
+                            </li>
+                            <li>
+                                <span class="li-icon warn">⚡</span>
+                                车道临时变窄与合流，需要动态路径规划和速度调节
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="scenario-footer">
+                        <span class="risk-tag high">车道偏离风险</span>
+                        <span class="risk-tag high">碰撞风险</span>
+                        <span class="risk-tag medium">视野受限</span>
+                        <span class="risk-tag low">路面异常</span>
+                    </div>
+                </div>
+
+                <!-- Scenario 2 -->
+                <div class="scenario-card">
+                    <div class="scenario-header">
+                        <div class="scenario-number">02</div>
+                        <div class="scenario-meta">
+                            <h3>行人与城市路口场景</h3>
+                            <span>sample_0000_448x1200_f129_fps12_2.mp4</span>
+                        </div>
+                    </div>
+                    <div class="scenario-body">
+                        <ul>
+                            <li>
+                                <span class="li-icon danger">🔥</span>
+                                行人密集区域，包括横穿、路边等待、骑行等多种行为模式
+                            </li>
+                            <li>
+                                <span class="li-icon warn">⚡</span>
+                                城市交叉路口场景，涉及交通信号、让行规则等复杂决策
+                            </li>
+                            <li>
+                                <span class="li-icon info">📌</span>
+                                多方向车流交汇，包括转弯、直行等不同行驶意图
+                            </li>
+                            <li>
+                                <span class="li-icon warn">⚡</span>
+                                水域/河岸附近道路环境，可能存在非标准道路布局
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="scenario-footer">
+                        <span class="risk-tag high">行人碰撞</span>
+                        <span class="risk-tag high">交叉冲突</span>
+                        <span class="risk-tag medium">信号误判</span>
+                        <span class="risk-tag low">非标准道路</span>
+                    </div>
+                </div>
+
+                <!-- Scenario 3: Weather Simulation -->
+                <div class="scenario-card">
+                    <div class="scenario-header">
+                        <div class="scenario-number">03</div>
+                        <div class="scenario-meta">
+                            <h3>仿真天气变化</h3>
+                            <span>weather_sim.mp4</span>
+                        </div>
+                    </div>
+                    <div class="scenario-body">
+                        <ul>
+                            <li>
+                                <span class="li-icon warn">⚡</span>
+                                天气条件动态变化，包括晴天、阴天、雨天、雾天等多种气象场景的平滑过渡
+                            </li>
+                            <li>
+                                <span class="li-icon info">📌</span>
+                                仿真环境下的天气编辑技术，可控地生成极端天气条件用于安全测试
+                            </li>
+                            <li>
+                                <span class="li-icon danger">🔥</span>
+                                天气变化对传感器感知的影响，验证自动驾驶系统在恶劣天气下的鲁棒性
+                            </li>
+                            <li>
+                                <span class="li-icon warn">⚡</span>
+                                光照条件剧烈变化，测试视觉感知算法的自适应能力
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="scenario-footer">
+                        <span class="risk-tag high">感知退化</span>
+                        <span class="risk-tag high">能见度降低</span>
+                        <span class="risk-tag medium">路面湿滑</span>
+                        <span class="risk-tag low">光照突变</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Timeline Section -->
+    <section class="timeline-section">
+        <div class="container">
+            <div class="section-title reveal">
+                <h2>⏱️ 关键事件时序</h2>
+                <p>场景一中关键安全事件的时序标注</p>
+            </div>
+
+            <div class="timeline reveal">
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <span class="timeline-time">0:00 - 0:02</span>
+                        <h4>🟢 初始场景建立</h4>
+                        <p>自车在施工区域附近行驶，前方出现施工锥桶与橙色路障，周边有大型卡车和轿车</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <span class="timeline-time">0:02 - 0:05</span>
+                        <h4>🟡 风险逐步升高</h4>
+                        <p>接近施工核心区域，车道变窄，白色货车在右侧近距离行驶，视野部分受限</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <span class="timeline-time">0:05 - 0:08</span>
+                        <h4>🔴 高风险阶段</h4>
+                        <p>车辆与大型货车并行通过施工路段，道路两侧均有障碍物，需精确控制横向与纵向运动</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <span class="timeline-time">0:08 - 0:10</span>
+                        <h4>🟢 风险降低驶离</h4>
+                        <p>成功通过施工区域，道路恢复正常，前方有轿车正常行驶，交通流趋于平稳</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>Safety-Critical Scenario Generation Demo · 安全关键场景生成展示</p>
+        </div>
+    </footer>
+
+    <script>
+        // ========== Video Player Logic ==========
+        const videos = [
+            document.getElementById('video0'),
+            document.getElementById('video1'),
+            document.getElementById('video2')
+        ];
+        let activeVideo = 0;
+
+        function switchVideo(index) {
+            // Pause all videos
+            videos.forEach((v, i) => {
+                v.pause();
+                document.getElementById('playBtn' + i).textContent = '▶';
+            });
+
+            // Switch panels
+            document.querySelectorAll('.video-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.video-tab').forEach(t => t.classList.remove('active'));
+
+            document.getElementById('videoPanel' + index).classList.add('active');
+            document.querySelectorAll('.video-tab')[index].classList.add('active');
+            activeVideo = index;
+        }
+
+        function togglePlay(index) {
+            const video = videos[index];
+            const btn = document.getElementById('playBtn' + index);
+            if (video.paused) {
+                video.play();
+                btn.textContent = '⏸';
+            } else {
+                video.pause();
+                btn.textContent = '▶';
+            }
+        }
+
+        function seekVideo(event, index) {
+            const video = videos[index];
+            const bar = event.currentTarget;
+            const rect = bar.getBoundingClientRect();
+            const ratio = (event.clientX - rect.left) / rect.width;
+            video.currentTime = ratio * video.duration;
+        }
+
+        // Update progress bars
+        videos.forEach((video, i) => {
+            video.addEventListener('timeupdate', () => {
+                if (video.duration) {
+                    const pct = (video.currentTime / video.duration) * 100;
+                    document.getElementById('progressFill' + i).style.width = pct + '%';
+                    const cur = formatTime(video.currentTime);
+                    const dur = formatTime(video.duration);
+                    document.getElementById('timeDisplay' + i).textContent = cur + ' / ' + dur;
+                }
+            });
+
+            video.addEventListener('ended', () => {
+                // loop is set, but update button
+                document.getElementById('playBtn' + i).textContent = '▶';
+            });
+        });
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        // ========== Scroll Reveal Animation ==========
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // ========== Smooth scroll for nav links ==========
+        document.querySelectorAll('nav a[href^="#"]').forEach(a => {
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.querySelector(a.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
